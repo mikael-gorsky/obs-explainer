@@ -94,8 +94,12 @@ def _centred(d: ImageDraw.ImageDraw, box, lines: list[tuple[str, ImageFont.FreeT
         y += h + gap
 
 
-def draw_plan(lit: set[str] | None = None, title: str | None = None) -> Image.Image:
+def draw_plan(lit: set[str] | None = None, title: str | None = None, show: set[str] | None = None) -> Image.Image:
+    """show, when given, names the only rooms drawn (as the plan builds itself room by room); the flow of copy is then
+    left out, and the sources, the outlets and the dropped arrow come with the wire room, the print room and the
+    barrier."""
     on = (lambda r: True) if lit is None else (lambda r: r in lit)
+    shown = (lambda r: True) if show is None else (lambda r: r in show)
     img = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(img)
     name_f, line_f, small_f = font("serif-bold", 28), font("sans", 19), font("sans", 18)
@@ -109,38 +113,43 @@ def draw_plan(lit: set[str] | None = None, title: str | None = None) -> Image.Im
     d.line([(250, 125), (1660, 125)], fill=_fade(MUTED, True, 0.5), width=1)
 
     # The flow of copy, drawn under the rooms.
-    flow = _fade(MUTED, lit is None or bool(lit - {"chief", "finance", "lab", "health", "server"}), 0.6)
-    mid = 515
-    for a, b in [("wire", "barrier"), ("barrier", "prebook")]:
-        _arrow(d, (box[a][2], mid), (box[b][0], mid), flow)
-    for room in ("ai", "et"):
-        y = (box[room][1] + box[room][3]) // 2
-        d.line([(box["prebook"][2], mid), (915, mid), (915, y)], fill=flow, width=3)
-        _arrow(d, (915, y), (box[room][0], y), flow)
-        d.line([(box[room][2], y), (1200, y), (1200, mid)], fill=flow, width=3)
-    _arrow(d, (1200, mid), (box["book"][0], mid), flow)
-    _arrow(d, (box["book"][2], mid), (box["print"][0], mid), flow)
-    _arrow(d, (1320, box["book"][3]), (1320, box["readers"][1]), flow)
-    dropped = _fade(DROP, lit is None or "barrier" in lit, 0.7)
-    x = (box["barrier"][0] + box["barrier"][2]) // 2
-    for y in range(box["barrier"][3], box["barrier"][3] + 60, 12):
-        d.line([(x, y), (x, y + 6)], fill=dropped, width=3)
-    d.polygon([(x, box["barrier"][3] + 72), (x - 8, box["barrier"][3] + 58), (x + 8, box["barrier"][3] + 58)], fill=dropped)
-    d.text((x + 14, box["barrier"][3] + 50), "dropped", font=small_f, fill=dropped)
+    flow_on = show is None
+    if flow_on:
+        flow = _fade(MUTED, lit is None or bool(lit - {"chief", "finance", "lab", "health", "server"}), 0.6)
+        mid = 515
+        for a, b in [("wire", "barrier"), ("barrier", "prebook")]:
+            _arrow(d, (box[a][2], mid), (box[b][0], mid), flow)
+        for room in ("ai", "et"):
+            y = (box[room][1] + box[room][3]) // 2
+            d.line([(box["prebook"][2], mid), (915, mid), (915, y)], fill=flow, width=3)
+            _arrow(d, (915, y), (box[room][0], y), flow)
+            d.line([(box[room][2], y), (1200, y), (1200, mid)], fill=flow, width=3)
+        _arrow(d, (1200, mid), (box["book"][0], mid), flow)
+        _arrow(d, (box["book"][2], mid), (box["print"][0], mid), flow)
+        _arrow(d, (1320, box["book"][3]), (1320, box["readers"][1]), flow)
+    if shown("barrier"):
+        dropped = _fade(DROP, lit is None or "barrier" in lit, 0.7)
+        x = (box["barrier"][0] + box["barrier"][2]) // 2
+        for y in range(box["barrier"][3], box["barrier"][3] + 60, 12):
+            d.line([(x, y), (x, y + 6)], fill=dropped, width=3)
+        d.polygon([(x, box["barrier"][3] + 72), (x - 8, box["barrier"][3] + 58), (x + 8, box["barrier"][3] + 58)], fill=dropped)
+        d.text((x + 14, box["barrier"][3] + 50), "dropped", font=small_f, fill=dropped)
 
     # Sources on the left edge and destinations on the right.
     src_on = lit is None or "sources" in lit or "wire" in lit
-    for k, s in enumerate(SOURCES):
+    for k, s in enumerate(SOURCES if shown("wire") else []):
         y = 350 + k * 50
         d.text((70, y - 11), s, font=small_f, fill=_fade(INK, src_on))
         _arrow(d, (190, y), (box["wire"][0], y), _fade(MUTED, src_on, 0.7), 2)
     out_on = lit is None or "outlets" in lit or "print" in lit
-    for k, s in enumerate(OUTLETS):
+    for k, s in enumerate(OUTLETS if shown("print") else []):
         y = 420 + k * 48
         _arrow(d, (box["print"][2], y), (1745, y), _fade(MUTED, out_on, 0.7), 2)
         d.text((1758, y - 11), s, font=small_f, fill=_fade(INK, out_on))
 
     for rid, name, line, kind, b in ROOMS:
+        if not shown(rid):
+            continue
         border, fill = KIND[kind]
         lit_here = on(rid)
         d.rectangle(b, fill=_fade(fill, lit_here), outline=_fade(border, lit_here), width=4 if lit_here and lit else 3)
